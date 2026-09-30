@@ -1,0 +1,10 @@
+# Dataset configuration for YOLO Number Plate Detector
+path: ../data  # dataset root dir (relative to data.yaml)
+train: images/train  # train images (relative to path)
+val: images/valid    # val images (relative to path)
+test: images/test    # test images (optional, relative to path)
+
+# Classes
+nc: 1
+names:
+  0: number_plate

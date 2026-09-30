@@ -1,0 +1,29 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Output files & temporary runs
+outputs/*
+!outputs/.gitkeep
+history/*.csv
+runs/
+.streamlit/
+
+# OS specific
+.DS_Store
+Thumbs.db
+*.tmp
+
+# IDE / Editor config
+.vscode/
+.idea/
+*.swp
