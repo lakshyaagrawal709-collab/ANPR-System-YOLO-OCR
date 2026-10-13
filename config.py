@@ -10,8 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # Model Configuration
 MODELS_DIR = BASE_DIR / "models"
-MODEL_PATH = MODELS_DIR / "best.pt"
-
+MODEL_PATH = BASE_DIR / "best.pt"
 # Data Directories
 DATA_DIR = BASE_DIR / "data"
 DATA_YAML_PATH = DATA_DIR / "data.yaml"
