@@ -26,12 +26,8 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
 
-* { box-sizing: border-box; }
-
-/* Set the default font on the app, without overriding Streamlit icon fonts */
-.stApp {
-    font-family: 'Inter', sans-serif;
-}
+body, .stApp { font-family: 'Inter', sans-serif; }
+*, *::before, *::after { box-sizing: border-box; }
 
 /* App background */
 .stApp { background: #080D1A; }
@@ -189,32 +185,10 @@ st.markdown("""
     .sub-header  { text-align:center; }
 }
 
-/* ── Fix Viva Q&A expander text and icon layout ─── */
-[data-testid="stExpander"] summary {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    min-height: 44px !important;
-}
-
-[data-testid="stExpander"] summary p {
-    display: block !important;
-    position: static !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    line-height: 1.6 !important;
-    white-space: normal !important;
-    overflow-wrap: anywhere !important;
-}
-
-[data-testid="stExpander"] summary svg {
-    flex-shrink: 0 !important;
-}
-
 /* ── Clean up default Streamlit chrome ─── */
 #MainMenu { visibility:hidden; }
 footer    { visibility:hidden; }
-[data-testid="stToolbar"] { display:none; }
+[data-testid="stToolbar"] { display:flex; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -457,69 +431,119 @@ elif page == "Image Detection":
 # MODULE 3 – CAMERA SCAN (MOBILE OPTIMISED)
 # ─────────────────────────────────────────────────────────────────────────────
 elif page == "Camera Scan":
-    st.markdown('<div class="section-title">📹 Live Camera Scanner</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-title">📹 Live Camera Scanner</div>',
+        unsafe_allow_html=True
+    )
 
-    # Mobile instructions card
     st.markdown("""
     <div class="result-card">
-    <b>📱 How to use on mobile:</b>
-    <ol style="margin:8px 0 0; padding-left:20px; line-height:1.9; color:#CBD5E1;">
-      <li>Open this page at <code style="background:#1E3A5F;padding:2px 6px;border-radius:4px;">{url}</code> on your phone</li>
-      <li>Tap the <b>Camera</b> button below</li>
-      <li>Allow camera permission → the <b>back camera</b> opens by default</li>
-      <li>Point steadily at the number plate in good light</li>
-      <li>Tap <b>Capture Photo</b> — result appears instantly</li>
-    </ol>
-    <br><small style="color:#64748B;">💡 Tip: Keep 30–50 cm distance, ensure plate is fully visible, avoid glare.</small>
+        <b>📱 How to use on mobile:</b>
+        <ol style="margin:8px 0 0; padding-left:20px; line-height:1.9; color:#CBD5E1;">
+            <li>Open Camera Scan on your phone.</li>
+            <li>Allow camera access when requested.</li>
+            <li>Keep the number plate fully visible and in focus.</li>
+            <li>Capture the photo and wait for the result.</li>
+        </ol>
+        <br>
+        <small style="color:#64748B;">
+            💡 Tip: Keep the phone steady, avoid glare, and use good lighting.
+        </small>
     </div>
-    """.format(url=f"http://{get_local_ip()}:8502"), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-    auto_scan = st.toggle("⚡ Auto-Scan after capture", value=True,
-                          help="Automatically runs ANPR as soon as a photo is taken")
+    auto_scan = st.toggle(
+        "⚡ Auto-Scan after capture",
+        value=True,
+        help="Automatically scan the photo after capture."
+    )
 
-    st.markdown('<span class="live-badge">● LIVE</span>', unsafe_allow_html=True)
+    st.markdown(
+        '<span class="live-badge">● CAMERA SCAN</span>',
+        unsafe_allow_html=True
+    )
+
     camera_img = st.camera_input("📸 Capture number plate")
 
-    if camera_img:
-        raw = np.asarray(bytearray(camera_img.read()), dtype=np.uint8)
+    if camera_img is not None:
+        raw = np.asarray(bytearray(camera_img.getvalue()), dtype=np.uint8)
         bgr_frame = cv2.imdecode(raw, cv2.IMREAD_COLOR)
 
-        scan_now = auto_scan or st.button("🔍 Scan Plate", type="primary", width="stretch")
+        if bgr_frame is None:
+            st.error("Could not read the captured photo. Please try again.")
+        else:
+            st.write("Camera image shape:", bgr_frame.shape)
+            st.write("Detection confidence:", conf_threshold)
+            st.image(bgr_to_rgb(bgr_frame), caption="Captured Photo", width="stretch")
 
-        if scan_now and bgr_frame is not None:
-            h_f, w_f = bgr_frame.shape[:2]
-            is_wide   = (w_f / float(h_f)) >= 1.8
+            scan_now = auto_scan or st.button(
+                "🔍 Scan Plate", type="primary", width="stretch"
+            )
 
-            with st.spinner("Scanning plate…"):
-                det_result, crop_bgr, plate_text, det_conf, ocr_conf, fmt_info = \
-                    run_full_pipeline(bgr_frame, conf_threshold, is_wide, source="Camera")
+            if scan_now:
+                with st.spinner("Scanning with YOLO and EasyOCR..."):
+                    try:
+                        (
+                            det_result, crop_bgr, plate_text,
+                            det_conf, ocr_conf, fmt_info
+                        ) = run_full_pipeline(
+                            bgr_frame, conf_threshold, True, source="Camera"
+                        )
 
-            col_r1, col_r2 = st.columns(2)
-            with col_r1:
-                st.caption("Captured Frame")
-                st.image(bgr_to_rgb(bgr_frame), width="stretch")
-            with col_r2:
-                st.caption("YOLO Overlay")
-                if det_result.get("annotated_image") is not None:
-                    st.image(bgr_to_rgb(det_result["annotated_image"]), width="stretch")
+                        if not det_result.get("success", False):
+                            st.error(
+                                "Detection error: "
+                                + str(det_result.get("message", "Unknown error"))
+                            )
+                        elif not det_result.get("detections"):
+                            st.warning(
+                                "No plate detected. Try a clear, upright photo "
+                                "with the plate filling more of the frame."
+                            )
+                        elif not plate_text:
+                            st.warning(
+                                "Plate region detected, but the number could not "
+                                "be read. Try a sharper photo with better lighting."
+                            )
+                            if crop_bgr is not None:
+                                st.image(
+                                    bgr_to_rgb(crop_bgr),
+                                    caption="Detected Plate Crop",
+                                    width="stretch"
+                                )
+                        else:
+                            st.markdown("---")
+                            st.markdown(
+                                '<div style="text-align:center;padding:16px;">'
+                                f'<div class="plate-badge">{plate_text}</div>'
+                                '<br><br>'
+                                + conf_pill("YOLO", det_conf)
+                                + conf_pill("OCR", ocr_conf)
+                                + f"<span class='info-pill pill-blue'>"
+                                  f"{fmt_info.get('format_type', '—')}</span>"
+                                + '</div>',
+                                unsafe_allow_html=True
+                            )
+                            st.success(
+                                f"✅ Plate {plate_text} recognised and logged!"
+                            )
+                            if crop_bgr is not None:
+                                st.image(
+                                    bgr_to_rgb(crop_bgr),
+                                    caption="Detected Plate",
+                                    width="stretch"
+                                )
 
-            if plate_text:
-                st.markdown("---")
-                st.markdown(
-                    f'<div style="text-align:center;padding:16px;">'
-                    f'<div class="plate-badge">{plate_text}</div>'
-                    f'<br><br>'
-                    + conf_pill("YOLO", det_conf)
-                    + conf_pill("OCR",  ocr_conf)
-                    + f"<span class='info-pill pill-blue'>{fmt_info.get('format_type','—')}</span>"
-                    + '</div>',
-                    unsafe_allow_html=True
-                )
-                st.success(f"✅ Plate **{plate_text}** recognised and logged!")
-            elif det_result["detections"]:
-                st.warning("Plate region found but text could not be read clearly. Move closer or improve lighting.")
-            else:
-                st.warning("No plate detected. Ensure plate fills most of the frame and is well-lit.")
+                        annotated = det_result.get("annotated_image")
+                        if annotated is not None:
+                            st.image(
+                                bgr_to_rgb(annotated),
+                                caption="YOLO Detection Result",
+                                width="stretch"
+                            )
+
+                    except Exception as e:
+                        st.error(f"Camera scan failed: {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MODULE 4 – HISTORY
